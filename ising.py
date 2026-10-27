@@ -13,13 +13,9 @@ def get_energy(lattice):
             cell = lattice[i][j]
             if j < N-1:
                 energy += cell * lattice[i][j+1]
-            if j > 0:
-                energy += cell * lattice[i][j-1]
             if i < N-1:
                 energy += cell * lattice[i+1][j]
-            if i > 0:
-                energy += cell * lattice[i-1][j]
-    return energy
+    return -1 * energy
 
 def metropolis(spin_matrix, energy, times=10, KbT=1):
     # Randomly choose a cell in spin matrix and flip it
@@ -31,17 +27,17 @@ def metropolis(spin_matrix, energy, times=10, KbT=1):
     # Compute change in energy from proposed flip
     Ei, Ef = 0, 0
     if j < N-1:
-       Ei += spin_i * spin_matrix[i][j+1]
-       Ef += spin_f * spin_matrix[i][j+1]
+       Ei += -spin_i * spin_matrix[i][j+1]
+       Ef += -spin_f * spin_matrix[i][j+1]
     if j > 0:
-       Ei += spin_i * spin_matrix[i][j-1]
-       Ef += spin_f * spin_matrix[i][j-1]
+       Ei += -spin_i * spin_matrix[i][j-1]
+       Ef += -spin_f * spin_matrix[i][j-1]
     if i < N-1:
-       Ei += spin_i * spin_matrix[i+1][j]
-       Ef += spin_i * spin_matrix[i+1][j]
+       Ei += -spin_i * spin_matrix[i+1][j]
+       Ef += -spin_f * spin_matrix[i+1][j]
     if i > 0:
-        Ei += spin_i * spin_matrix[i-1][j]
-        Ef += spin_i * spin_matrix[i-1][j]
+        Ei += -spin_i * spin_matrix[i-1][j]
+        Ef += -spin_f * spin_matrix[i-1][j]
 
     dE = Ef - Ei
 
@@ -74,5 +70,5 @@ def main():
 
 main()
 
-if "__name__" == "__main__":
+if __name__ == "__main__":
     main()
