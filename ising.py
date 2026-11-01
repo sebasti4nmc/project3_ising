@@ -73,14 +73,25 @@ def main():
     initial_energy = get_energy(spin_matrix)
     E, M = metropolis(spin_matrix, initial_energy)
 
+    steps = []
+    energies = []
+    mag = []
+
+    for i in range(1000, len(E) + 1, 1000):
+        energies.append(np.average(E[i-100:i]))
+        mag.append(np.average(M[i-100:i]))
+        steps.append(i)
+
     fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-    ax[0].plot(E); ax[0].set_ylabel('Energy'); ax[0].set_xlabel('Sweep')
-    ax[1].plot(M / N**2); ax[1].set_ylabel('Magnetization per spin'); ax[1].set_xlabel('Sweep')
-    plt.subplots_adjust(wspace=0.6, hspace=0.6) 
+    ax[0].plot(steps, np.array(energies) / N**2)
+    ax[0].set_ylabel('Energy per spin')
+    ax[0].set_xlabel('Sweeps')
 
-    # plot average every 10-1000 sweeps
+    ax[1].plot(steps, np.array(mag) / N**2)
+    ax[1].set_ylabel('Magnetization per spin')
+    ax[1].set_xlabel('Sweeps')
 
-    plt.legend()
+    plt.subplots_adjust(wspace=0.6)
     plt.show()
 
 if __name__ == "__main__":
