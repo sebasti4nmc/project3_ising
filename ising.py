@@ -68,12 +68,19 @@ def autocorr(x, max_lag=None):
     n = len(x)
     if max_lag is None:
         max_lag = n // 10
-    x = x - x.mean()
-    var = np.mean(x * x)                       # Var(x), the lag-0 covariance
+
+    mu = np.mean(x)
+    var = np.var(x)    
+
     rho = np.empty(max_lag)
     for tau in range(max_lag):
-        cov = np.mean(x[:n - tau] * x[tau:])   # Cov(x_t, x_{t+tau})
+        a = x[:n - tau]                 # Compute x_t, our quantity x up to sweep n-tau
+        a_shift = x[tau:]               # Compute x_{t+tau}, our quantity x shifted by value tau
+
+        # With these 2 sublists of x, we compute the covariance of x and itself shifted over by tau sweeps
+        cov = np.cov(a, a_shift)[0, 1]
         rho[tau] = cov / var
+
     return 0.5 + rho.sum()
 
 
