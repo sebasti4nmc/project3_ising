@@ -4,10 +4,10 @@ from numba import njit
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve, generate_binary_structure
 
-N = 4 # grid size
+N = 100 # grid size
 J = 1 # Exchange energy
 Kb = 1 # Boltzmann constant
-T = 2 # temperature
+T = 1 # temperature
 
 def get_energy(lattice):
     kern = generate_binary_structure(2, 1) 
@@ -63,6 +63,19 @@ def metropolis(spin_matrix, energy, times=100000, KbT=Kb*T):
 
     return net_energy, net_spins # E, M     
 
+def autocorr(x, max_lag=None):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if max_lag is None:
+        max_lag = n // 10
+    x = x - x.mean()
+    var = np.mean(x * x)                       # Var(x), the lag-0 covariance
+    rho = np.empty(max_lag)
+    for tau in range(max_lag):
+        cov = np.mean(x[:n - tau] * x[tau:])   # Cov(x_t, x_{t+tau})
+        rho[tau] = cov / var
+    return 0.5 + rho.sum()
+
 
 def main():
     random_matrix = np.random.random((N,N))
@@ -72,6 +85,11 @@ def main():
 
     initial_energy = get_energy(spin_matrix)
     E, M = metropolis(spin_matrix, initial_energy)
+
+    tau_E = autocorr(E)
+    tau_M = autocorr(M)
+
+    print(tau_M)
 
     steps = []
     energies = []
@@ -83,8 +101,8 @@ def main():
         steps.append(i)
 
     fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-    ax[0].plot(steps, np.array(energies) / N**2)
-    ax[0].set_ylabel('Energy per spin')
+    ax[0].plot(steps, np.array(energies))
+    ax[0].set_ylabel('Energy')
     ax[0].set_xlabel('Sweeps')
 
     ax[1].plot(steps, np.array(mag) / N**2)
