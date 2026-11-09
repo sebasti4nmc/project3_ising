@@ -4,17 +4,18 @@ from numba import njit
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve, generate_binary_structure
 
-N = 4  # grid size
+N = 10  # grid size
 J = 1  # Exchange energy
 Kb = 1  # Boltzmann constant
-T = 2  # temperature
+T = 50  # temperature
 
 
 def get_energy(lattice):
     kern = generate_binary_structure(2, 1)
     kern[1][1] = False
     arr = -lattice * convolve(lattice, kern, mode='constant', cval=0)
-    return 1/2 * arr.sum()
+    # print(type(arr.sum()))
+    return float(1/2 * arr.sum())
 
 
 @njit
@@ -68,8 +69,10 @@ def metropolis(spin_matrix, energy, times=100000, KbT=Kb*T):
 def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
     # Initialize spin and energy lists
     spin_arr = spin_matrix.copy()
-    net_spins = np.zeros(times-1)
-    net_energy = np.zeros(times-1)
+    # print(type(spin_arr))
+    net_spins = np.zeros(times - 1)
+    net_energy = np.zeros(times - 1)
+    cluster_sizes = np.zeros(times - 1)
     energy = get_energy(spin_arr)
 
     # probability of addition
@@ -81,6 +84,7 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
         j0 = np.random.randint(0, N)
         seed_spin = spin_arr[i0, j0]
         seed_spin = spin_arr[i0][j0]
+        size = 1
 
         # assign start of stack to the seeds
         stack = [(i0, j0)]
@@ -106,13 +110,42 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
                     if np.random.random() < p_add:
                         spin_arr[ni][nj] = -seed_spin
                         stack.append((ni, nj))
+                        size += 1
+
+        if (t + 1) % 10000 == 0:
+            print(f'Wolff sweep {t + 1}')
 
         # recompute after loop
         energy = get_energy(spin_arr)
         net_spins[t] = np.abs(spin_arr.sum())
         net_energy[t] = energy
+        cluster_sizes[t] = size
 
-    return net_energy, net_spins
+    return net_energy, net_spins, cluster_sizes
+
+# --- AUTOCORRELATION ---
+
+
+def tau_int(x, max_lag=None, c=5):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if max_lag is None:
+        max_lag = n // 10
+
+    var = np.var(x)
+    rho = np.empty(max_lag)
+    for tau in range(max_lag):
+        a = x[:n - tau]
+        a_shift = x[tau:]
+        cov = np.cov(a, a_shift)[0, 1]
+        rho[tau] = cov / var
+
+    tau = 0.5
+    for W in range(1, len(rho)):
+        tau += rho[W]
+        if W >= c * tau:
+            return tau, True
+    return tau, False
 
 
 def main():
@@ -121,12 +154,33 @@ def main():
     spin_matrix[random_matrix >= 0.5] = 1
     spin_matrix[random_matrix < 0.5] = -1
 
-    initial_energy = get_energy(spin_matrix)
-    E_metro, M_metro = metropolis(spin_matrix.copy(), initial_energy)
-    E_wolff, M_wolff = wolff(spin_matrix.copy(), initial_energy)
+    E0 = get_energy(spin_matrix)
+    E_metro, M_metro = metropolis(spin_matrix.copy(), E0)
+    E_wolff, M_wolff, sizes = wolff(spin_matrix.copy(), E0)
+
+    # absolute values
+    absM_metro = np.abs(M_metro)
+    absM_wolff = np.abs(M_wolff)
+
+    # wolff burn in less than metro burn in
+    burn_metro = 4000
+    burn_wolff = 1000
+
+    # calculate tau for both methods --> 1 index = 1 sweep
+    tau_E_m, ok_E_m = tau_int(E_metro[burn_metro:])
+    tau_M_m, ok_M_m = tau_int(absM_metro[burn_metro:])
+    tau_E_w, ok_E_w = tau_int(E_wolff[burn_wolff:])
+    tau_M_w, ok_M_w = tau_int(absM_wolff[burn_wolff:])
+
+    print(f"\nMetropolis Results")
+    print(f"tau_E = {tau_E_m:.2f} sweeps (converged: {ok_E_m})")
+    print(f"tau_M = {tau_M_m:.2f} sweeps (converged: {ok_M_m})")
+    print(f"\nWolff Results")
+    print(f"tau_E = {tau_E_w:.2f} sweeps (converged: {ok_E_w})")
+    print(f"tau_M = {tau_M_w:.2f} sweeps (converged: {ok_M_w})")
 
     # clean array generation ensuring identical dimensions
-    steps = np.arange(1000, len(E_metro) + 1, 1000)
+    steps = np.arange(100, len(E_metro) + 1, 100)
     energies_m = [np.average(E_metro[i-100:i]) for i in steps]
     mag_m = [np.average(M_metro[i-100:i]) for i in steps]
     energies_w = [np.average(E_wolff[i-100:i]) for i in steps]
@@ -137,15 +191,28 @@ def main():
     ax[0].plot(steps, np.array(energies_w) / N**2, label='Wolff')
     ax[0].set_ylabel('Energy per spin')
     ax[0].set_xlabel('Sweeps')
-    ax[0].legend()
+    ax[0].axvline(burn_metro, color="k", ls="--", lw=0.8)  # burn in cutoff
+    # add in tau to display
+    ax[0].plot([], [], " ", label=rf"Metro: $\tau_E$ = {tau_E_m:.1f} sweeps")
+    ax[0].plot([], [], " ", label=rf"Wolff: $\tau_E$ = {tau_E_w:.1f} sweeps")
+    ax[0].legend(loc='best')
 
     ax[1].plot(steps, np.array(mag_m) / N**2, label='Metropolis')
     ax[1].plot(steps, np.array(mag_w) / N**2, label='Wolff')
     ax[1].set_ylabel('Magnetization per spin')
     ax[1].set_xlabel('Sweeps')
+    ax[1].axvline(burn_metro, color="k", ls="--", lw=0.8)
+    # add tau into display
+    ax[1].plot([], [], " ", label=rf"Metro: $\tau_M$ = {tau_M_m:.1f} sweeps")
+    ax[1].plot([], [], " ", label=rf"Wolff: $\tau_M$ = {tau_M_w:.1f} sweeps")
+    ax[1].legend(loc='best')
 
+    fig.suptitle(f"Metropolis vs. Wolff Algorithm for T = {T}", fontsize=14)
+    plt.subplots_adjust(wspace=0.3)
+    plt.tight_layout()
     plt.subplots_adjust(wspace=0.6)
     plt.show()
+    plt.close()
 
 
 if __name__ == "__main__":
