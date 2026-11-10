@@ -73,9 +73,9 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
     net_spins = np.zeros(times - 1)
     net_energy = np.zeros(times - 1)
     cluster_sizes = np.zeros(times - 1)
-    energy = get_energy(spin_arr)
+    # energy = get_energy(spin_arr)
 
-    # probability of addition
+    # probability that bond forms between 2 parallel neighboring spins
     p_add = 1 - np.exp(-2 * J / KbT)
 
     for t in range(times - 1):
@@ -84,16 +84,15 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
         j0 = np.random.randint(0, N)
         seed_spin = spin_arr[i0, j0]
         seed_spin = spin_arr[i0][j0]
-        size = 1
 
-        # assign start of stack to the seeds
+        # create a stacking list to track cluster growth
         stack = [(i0, j0)]
-        # immediately flip the seed
+        # immediately flip seed
         spin_arr[i0][j0] = -seed_spin
 
         while len(stack) > 0:
+            # pop a coordinate off the stack to check its 4 neighbors
             curr_i, curr_j = stack.pop()
-
             neighbors = []
             if curr_j < N - 1:
                 neighbors.append((curr_i, curr_j + 1))
@@ -104,24 +103,23 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
             if curr_i > 0:
                 neighbors.append((curr_i - 1, curr_j))
 
-            # loop through neighbors to flip
+            # check if neighbor is in same direction as original seed spin
             for ni, nj in neighbors:
                 if spin_arr[ni][nj] == seed_spin:
+                    # in less than p_add as well, add it to the cluster
                     if np.random.random() < p_add:
                         spin_arr[ni][nj] = -seed_spin
                         stack.append((ni, nj))
-                        size += 1
 
         if (t + 1) % 10000 == 0:
             print(f'Wolff sweep {t + 1}')
 
-        # recompute after loop
-        energy = get_energy(spin_arr)
+        # once the cluster stops growing, compute total energy and magnitization
+        # energy = get_energy(spin_arr)
         net_spins[t] = np.abs(spin_arr.sum())
         net_energy[t] = energy
-        cluster_sizes[t] = size
 
-    return net_energy, net_spins, cluster_sizes
+    return net_energy, net_spins
 
 # --- AUTOCORRELATION ---
 
@@ -156,7 +154,7 @@ def main():
 
     E0 = get_energy(spin_matrix)
     E_metro, M_metro = metropolis(spin_matrix.copy(), E0)
-    E_wolff, M_wolff, sizes = wolff(spin_matrix.copy(), E0)
+    E_wolff, M_wolff = wolff(spin_matrix.copy(), E0)
 
     # absolute values
     absM_metro = np.abs(M_metro)
@@ -211,6 +209,8 @@ def main():
     plt.subplots_adjust(wspace=0.3)
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.6)
+    # plt.savefig('wolff_plots_T1')
+    plt.savefig('wolff_plots_T50')
     plt.show()
     plt.close()
 
