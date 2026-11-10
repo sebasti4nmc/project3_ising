@@ -10,6 +10,7 @@ T = 6.0 #Temperature
 #Coordinate system for the 3D lattice
 def site_number(x, y, z):
     return x * L**2 + y*L + z
+
 # Setting up Adjacency Matrix
 A = np.zeros((N, N), dtype=int)
 for x in range(L):
