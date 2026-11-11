@@ -2,11 +2,36 @@ import numpy as np
 import numba
 from numba import njit
 import matplotlib.pyplot as plt
+#AutoCorrelation function
+def tau(x, max_lag=None, c=5):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if max_lag is None:
+        max_lag = n // 10
+
+    mu = np.mean(x)
+    var = np.var(x)    
+
+    rho = np.empty(max_lag)
+    for tau in range(max_lag):
+        a = x[:n - tau]                 # Compute x_t, our quantity x up to sweep n-tau
+        a_shift = x[tau:]               # Compute x_{t+tau}, our quantity x shifted by value tau
+
+        # With these 2 sub-lists of x, we compute the covariance of x and itself shifted over by tau sweeps
+        cov = np.cov(a, a_shift)[0, 1]
+        rho[tau] = cov / var
+
+    tau = 0.5
+    for W in range(1, len(rho)):
+        tau += rho[W]
+        if W >= c * tau:
+            return tau, True                   # window closed: estimate is trustworthy
+    return tau, False
 # Setting up a 3D lattice - a 3D cube
 L = 10 #Side length
 N=L**3 #Total number of sites
 J = 1.0
-T = 6.0 #Temperature
+T = 5 #Temperature
 #Coordinate system for the 3D lattice
 def site_number(x, y, z):
     return x * L**2 + y*L + z
@@ -70,7 +95,13 @@ def metropolis(spins, A, energy, J, T, times=200000):
     return net_energy, net_spins, spin_arr 
 
 E_hist, M_hist, final_spins = metropolis(spins, A, E, J, T, times=200000)
+# --- Autocorrelation Time ---
+burn = 10000
+tau_E, ok_E = tau(E_hist[burn:])
+tau_M, ok_M = tau(M_hist[burn:])
 
+print(f"tau_E = {tau_E: .1f} (Converged: {ok_E})")
+print(f"tau_M = {tau_M: .1f} (Converged: {ok_M})")
 # Check 1: running energy should match the Hamiltonian recomputed from scratch
 E_recomputed = -J * np.sum(A * np.outer(final_spins, final_spins)) / 2
 print(E_hist[-1], E_recomputed)          # these two should be equal
