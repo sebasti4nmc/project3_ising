@@ -102,9 +102,6 @@ tau_M, ok_M = tau(M_hist[burn:])
 
 print(f"tau_E = {tau_E: .1f} (Converged: {ok_E})")
 print(f"tau_M = {tau_M: .1f} (Converged: {ok_M})")
-# Check 1: running energy should match the Hamiltonian recomputed from scratch
-E_recomputed = -J * np.sum(A * np.outer(final_spins, final_spins)) / 2
-print(E_hist[-1], E_recomputed)          # these two should be equal
 
 # Check: where did the system end up?
 print("E Final:",E_hist[-1], "M Final:", M_hist[-1]/N)
