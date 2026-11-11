@@ -31,7 +31,7 @@ def tau(x, max_lag=None, c=5):
 L = 10 #Side length
 N=L**3 #Total number of sites
 J = 1.0
-T = 5 #Temperature
+T = 20 #Temperature
 #Coordinate system for the 3D lattice
 def site_number(x, y, z):
     return x * L**2 + y*L + z
@@ -98,7 +98,7 @@ E_hist, M_hist, final_spins = metropolis(spins, A, E, J, T, times=200000)
 # --- Autocorrelation Time ---
 burn = 10000
 tau_E, ok_E = tau(E_hist[burn:])
-tau_M, ok_M = tau(M_hist[burn:])
+tau_M, ok_M = tau(np.abs(M_hist[burn:]))
 
 print(f"tau_E = {tau_E: .1f} (Converged: {ok_E})")
 print(f"tau_M = {tau_M: .1f} (Converged: {ok_M})")
@@ -131,7 +131,10 @@ ax[1].plot(sweeps, M_hist/N)
 ax[1].plot(block_centres, M_block, color='red', label='Sweep Average')
 ax[1].axhline(M_mean, color='green', linestyle='--', label='Overall Average')
 ax[1].set_xlabel("Sweeps")
-ax[1].set_ylabel("Magnetisation |M|")
+ax[1].set_ylabel("Magnetisation |M| Per Spin")
+
+ax[0].legend()
+ax[1].legend()
 
 fig.suptitle(f"3D cube, L = {L}, T = {T}")
 plt.tight_layout()
