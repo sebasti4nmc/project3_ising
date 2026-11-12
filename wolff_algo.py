@@ -7,7 +7,7 @@ from scipy.ndimage import convolve, generate_binary_structure
 N = 10  # grid size
 J = 1  # Exchange energy
 Kb = 1  # Boltzmann constant
-T = 50  # temperature
+T = 20  # temperature
 
 
 def get_energy(lattice):
@@ -73,7 +73,7 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
     net_spins = np.zeros(times - 1)
     net_energy = np.zeros(times - 1)
     cluster_sizes = np.zeros(times - 1)
-    # energy = get_energy(spin_arr)
+    energy = get_energy(spin_arr)
 
     # probability that bond forms between 2 parallel neighboring spins
     p_add = 1 - np.exp(-2 * J / KbT)
@@ -115,7 +115,7 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
             print(f'Wolff sweep {t + 1}')
 
         # once the cluster stops growing, compute total energy and magnitization
-        # energy = get_energy(spin_arr)
+        energy = get_energy(spin_arr)
         net_spins[t] = np.abs(spin_arr.sum())
         net_energy[t] = energy
 
@@ -180,11 +180,17 @@ def main():
     # clean array generation ensuring identical dimensions
     steps = np.arange(100, len(E_metro) + 1, 100)
     energies_m = [np.average(E_metro[i-100:i]) for i in steps]
-    mag_m = [np.average(M_metro[i-100:i]) for i in steps]
+    mag_m = [np.average(absM_metro[i-100:i]) for i in steps]
     energies_w = [np.average(E_wolff[i-100:i]) for i in steps]
-    mag_w = [np.average(M_wolff[i-100:i]) for i in steps]
+    mag_w = [np.average(absM_wolff[i-100:i]) for i in steps]
 
-    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    # compute averages after burn in
+    E_avg_m = E_metro[burn_metro:].mean() / N**2
+    E_avg_w = E_wolff[burn_wolff:].mean() / N**2
+    M_avg_m = absM_metro[burn_metro:].mean() / N**2
+    M_avg_w = absM_wolff[burn_wolff:].mean() / N**2
+
+    fig, ax = plt.subplots(1, 2, figsize=(10, 6))
     ax[0].plot(steps, np.array(energies_m) / N**2, label='Metropolis')
     ax[0].plot(steps, np.array(energies_w) / N**2, label='Wolff')
     ax[0].set_ylabel('Energy per spin')
@@ -193,7 +199,12 @@ def main():
     # add in tau to display
     ax[0].plot([], [], " ", label=rf"Metro: $\tau_E$ = {tau_E_m:.1f} sweeps")
     ax[0].plot([], [], " ", label=rf"Wolff: $\tau_E$ = {tau_E_w:.1f} sweeps")
-    ax[0].legend(loc='best')
+    ax[0].axhline(E_avg_m, color='C0', ls='--', lw=1.2,
+                  label=f"Metro <E>/N² = {E_avg_m:.3f}")
+    ax[0].axhline(E_avg_w, color='C1', ls='--', lw=1.2,
+                  label=f"Wolff <E>/N² = {E_avg_w:.3f}")
+    ax[0].legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
+                 fontsize=8, frameon=False)
 
     ax[1].plot(steps, np.array(mag_m) / N**2, label='Metropolis')
     ax[1].plot(steps, np.array(mag_w) / N**2, label='Wolff')
@@ -203,14 +214,17 @@ def main():
     # add tau into display
     ax[1].plot([], [], " ", label=rf"Metro: $\tau_M$ = {tau_M_m:.1f} sweeps")
     ax[1].plot([], [], " ", label=rf"Wolff: $\tau_M$ = {tau_M_w:.1f} sweeps")
-    ax[1].legend(loc='best')
+    ax[1].axhline(M_avg_m, color='C0', ls='--', lw=1.2,
+                  label=f"Metro <|M|>/N² = {M_avg_m:.3f}")
+    ax[1].axhline(M_avg_w, color='C1', ls='--', lw=1.2,
+                  label=f"Wolff <|M|>/N² = {M_avg_w:.3f}")
+    ax[1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.15),
+                 fontsize=8, frameon=False)
 
     fig.suptitle(f"Metropolis vs. Wolff Algorithm for T = {T}", fontsize=14)
-    plt.subplots_adjust(wspace=0.3)
     plt.tight_layout()
-    plt.subplots_adjust(wspace=0.6)
-    # plt.savefig('wolff_plots_T1')
-    plt.savefig('wolff_plots_T50')
+    plt.savefig(f'wolff_plots_T{T}.png', bbox_inches='tight', dpi=200)
+    print(f'Done plotting wolff_plots_T{T}.png')
     plt.show()
     plt.close()
 
