@@ -6,7 +6,7 @@ from scipy.ndimage import convolve, generate_binary_structure
 N = 10 # grid size
 J = 1 # Exchange energy
 Kb = 1 # Boltzmann constant
-T = 50 # temperature
+T = 2 # temperature
 
 def get_energy(lattice):
     kern = generate_binary_structure(2, 1) 
@@ -89,6 +89,12 @@ def tau(x, max_lag=None, c=5):
             return tau, True                   # window closed: estimate is trustworthy
     return tau, False
 
+def error(x, t_int):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    n_eff = n / (2 * t_int)
+    err = np.sqrt(np.var(x, ddof=1) / n_eff)
+    return err
 
 def main():
     random_matrix = np.random.random((N,N))
@@ -101,16 +107,16 @@ def main():
 
     burn = 4000
     E_eq = E[burn:]
-    absM_eq = np.abs(M[burn:])
+    M_eq = M[burn:]
 
     tau_E, ok_E = tau(E_eq)
-    tau_M, ok_M = tau(absM_eq)
+    tau_M, ok_M = tau(M_eq)
+    E_err, M_err = error(E_eq, tau_E), error(M_eq, tau_M)
     print(f"tau_E = {tau_E:.2f} sweeps (converged: {ok_E})")
     print(f"tau_M = {tau_M:.2f} sweeps (converged: {ok_M})")
 
     E_avg = np.mean(E_eq)
-    absM_avg = np.mean(absM_eq) / N**2  
-
+    M_avg = np.mean(M_eq) / N**2  
     steps = []
     energies = []
     mag = []
@@ -128,25 +134,24 @@ def main():
     ax[0].axhline(E_avg, color="r", ls="-", lw=1.2,
                     label=f"<E> = {E_avg:.2f}")
 
-    ax[1].plot(steps, np.abs(mag) / N**2)
-    # ax[1].plot(np.abs(M) / N**2)
+    ax[1].plot(steps, np.array(mag) / N**2)
     ax[1].set_ylabel('Magnetization per spin')
-    ax[1].axhline(absM_avg, color="r", ls="-", lw=1.2,
-                    label=f"<|M|>/N² = {absM_avg:.3f}")
+    ax[1].axhline(M_avg, color="r", ls="-", lw=1.2,
+                    label=f"<M>/N² = {M_avg:.3f}")
 
     for a in ax[:2]:
             a.set_xlabel("Sweep")
             a.axvline(burn, color="k", ls="--", lw=0.8)   # burn-in cutoff
 
-    ax[0].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_E$ = {tau_E:.1f} sweeps")
-    ax[1].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_M$ = {tau_M:.1f} sweeps")
+    ax[0].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_E$ = {tau_E:.1f} sweeps, error = {E_err: .1f}")
+    ax[1].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_M$ = {tau_M:.1f} sweeps, error = {M_err: .1f}")
 
     fig.suptitle(f"Metropolis-Hastings for T = {T}", fontsize=14)
     fig.tight_layout()
     for a in ax:
         a.legend(loc="best")
 
-    plt.savefig(f'figures/metropolis_plot_T={T}.png')
+    # plt.savefig(f'figures/metropolis_plot_T={T}.png')
     plt.show()
 
 if __name__ == "__main__":
