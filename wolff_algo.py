@@ -3,6 +3,8 @@ import numba
 from numba import njit
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve, generate_binary_structure
+from scipy.optimize import curve_fit
+
 
 N = 10  # grid size
 J = 1  # Exchange energy
@@ -146,6 +148,49 @@ def tau_int(x, max_lag=None, c=5):
     return tau, False
 
 
+def mag_sweeps(L_vals, temps, steps=30000, burn_in=4000):
+    T_list = []
+
+    for L in L_vals:
+        m_vals = []
+        for T in temps:
+            kbt = Kb * T
+            random_matrix = np.random.random((N, N))
+            spin_matrix = np.zeros((N, N))
+            spin_matrix[random_matrix >= 0.5] = 1
+            spin_matrix[random_matrix < 0.5] = -1
+            E0 = get_energy(spin_matrix)
+
+            # run metro simulation
+            net_energy, net_spins = metropolis(
+                spin_matrix, E0, times=steps, KbT=kbt)
+            # equilibrium magnetization
+            M_metro = net_spins[burn_in:]
+            mean_m = np.mean(M_metro) / (L * L)
+            m_vals.append(mean_m)
+
+        m_vals = np.array(m_vals)
+
+        # use np.gradient to calculate the derivative
+        # finding |dM / dT|
+        dT = temps[1] - temps[0]
+        dM_dT = np.abs(np.gradient(m_vals, dT))
+
+        # use derivative to find the peak
+        peak = np.argmax(dM_dT)
+        T_L = temps[peak]
+        T_list.append(T_L)
+        print(f'L = {L}; T(L) = {T_L:.3f}')
+    return np.array(L_vals), np.array(T_list)
+
+# gemini suggestion
+# Define finite-size scaling fit function
+
+
+def fss_relation(L, T_c, x0, nu):
+    return T_c * (1.0 + x0 * (L ** (-1.0 / nu)))
+
+
 def main():
     random_matrix = np.random.random((N, N))
     spin_matrix = np.zeros((N, N))
@@ -227,6 +272,19 @@ def main():
     print(f'Done plotting wolff_plots_T{T}.png')
     plt.show()
     plt.close()
+
+    # critical temperature calculation
+    L_vals = [10, 15, 20]
+    temps = [1.0, 4.0, 50]
+
+    L_arr, T_arr = mag_sweeps(L_vals, temps)
+
+    # fit using least squares
+    param_opt, param_cov = curve_fit(
+        fss_relation, L_arr, T_arr, p0=[2.26, 1.0, 1.0])
+    Tc_est, x0_est, nu_est = param_opt
+
+    print(f"\nEstimated T_c (infinite limit): {Tc_est:.4f}")
 
 
 if __name__ == "__main__":
