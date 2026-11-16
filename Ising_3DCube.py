@@ -31,7 +31,7 @@ def tau(x, max_lag=None, c=5):
 L = 10 #Side length
 N=L**3 #Total number of sites
 J = 1.0
-T = 20 #Temperature
+T = 4 #Temperature
 #Coordinate system for the 3D lattice
 def site_number(x, y, z):
     return x * L**2 + y*L + z
@@ -113,27 +113,30 @@ E_block = np.mean(E_hist[:n_blocks*block].reshape(n_blocks, block), axis=1)
 M_block = np.mean(M_hist[:n_blocks*block].reshape(n_blocks, block), axis=1) / N
 block_centres = np.arange(n_blocks) * block + block / 2
 
-E_mean = np.mean(E_hist)          #Overall average Energy
-M_mean = np.mean(M_hist) / N      #Overall average Magnetization
+E_mean = np.mean(E_hist[burn:])               # average after burn-in
+M_mean = np.mean(np.abs(M_hist[burn:])) / N   # average |M| per spin after burn-in
 
 # ---- Plot E and M against sweeps ----
-sweeps = np.arange(len(E_hist))     # step number -> sweeps
+sweeps = np.arange(len(E_hist))
 
-fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 
+# Energy
 ax[0].plot(sweeps, E_hist)
-ax[0].plot(block_centres, E_block, color='red', label='Sweep Average')
-ax[0].axhline(E_mean, color='green', linestyle='--', label='Overall Average')
-ax[0].set_xlabel("Sweeps")
+ax[0].axhline(E_mean, color="red", label=f"<E> = {E_mean:.2f}")
+ax[0].axvline(burn, color="black", linestyle="--", linewidth=0.8)
+ax[0].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_E$ = {tau_E:.1f} sweeps")
+ax[0].set_xlabel("Sweep")
 ax[0].set_ylabel("Energy E")
-
-ax[1].plot(sweeps, M_hist/N)
-ax[1].plot(block_centres, M_block, color='red', label='Sweep Average')
-ax[1].axhline(M_mean, color='green', linestyle='--', label='Overall Average')
-ax[1].set_xlabel("Sweeps")
-ax[1].set_ylabel("Magnetisation |M| Per Spin")
-
 ax[0].legend()
+
+# Magnetisation
+ax[1].plot(sweeps, np.abs(M_hist) / N)
+ax[1].axhline(M_mean, color="red", label=f"<|M|>/N = {M_mean:.3f}")
+ax[1].axvline(burn, color="black", linestyle="--", linewidth=0.8)
+ax[1].plot([], [], " ", label=rf"Burn-in = {burn}, $\tau_M$ = {tau_M:.1f} sweeps")
+ax[1].set_xlabel("Sweep")
+ax[1].set_ylabel("Magnetisation per spin")
 ax[1].legend()
 
 fig.suptitle(f"3D cube, L = {L}, T = {T}")
