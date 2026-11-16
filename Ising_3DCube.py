@@ -2,11 +2,36 @@ import numpy as np
 import numba
 from numba import njit
 import matplotlib.pyplot as plt
+#AutoCorrelation function
+def tau(x, max_lag=None, c=5):
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if max_lag is None:
+        max_lag = n // 10
+
+    mu = np.mean(x)
+    var = np.var(x)    
+
+    rho = np.empty(max_lag)
+    for tau in range(max_lag):
+        a = x[:n - tau]                 # Compute x_t, our quantity x up to sweep n-tau
+        a_shift = x[tau:]               # Compute x_{t+tau}, our quantity x shifted by value tau
+
+        # With these 2 sub-lists of x, we compute the covariance of x and itself shifted over by tau sweeps
+        cov = np.cov(a, a_shift)[0, 1]
+        rho[tau] = cov / var
+
+    tau = 0.5
+    for W in range(1, len(rho)):
+        tau += rho[W]
+        if W >= c * tau:
+            return tau, True                   # window closed: estimate is trustworthy
+    return tau, False
 # Setting up a 3D lattice - a 3D cube
-L = 3 #Side length
+L = 10 #Side length
 N=L**3 #Total number of sites
 J = 1.0
-T = 2.0 #Temperature
+T = 20 #Temperature
 #Coordinate system for the 3D lattice
 def site_number(x, y, z):
     return x * L**2 + y*L + z
@@ -26,23 +51,16 @@ for x in range(L):
             A[i, site_number(x, y, (z - 1) % L)] = 1
 
 # Setting up the initial spin configuration - Hot Start
-np.random.seed(42)
 spins = np.random.choice([-1, 1], size=N)
 # Inital Magnetization
 M = np.sum(spins)
 # inital Energy
 E = -J * np.sum(A * np.outer(spins, spins)) / 2
-print(A.sum(axis=1)) # This will print the number of neighbors for each site
-print(np.array_equal(A, A.T))
-print(np.nonzero(A[13])[0])
-
-test = np.ones(N)
-print(-J * np.sum(A * np.outer(test, test)) / 2) # This should be -3*L^3
-print(E, M)
-
+print("Initial Energy:", E)
+print("Initial Magnetization:", M)
 #Metropolis Algorithm
 @njit
-def metropolis(spins, A, energy, J, T, times=10000):
+def metropolis(spins, A, energy, J, T, times=200000):
     spin_arr = spins.copy()
     N = spin_arr.size
     net_spins = np.zeros(times - 1)
@@ -71,16 +89,53 @@ def metropolis(spins, A, energy, J, T, times=10000):
                 spin_arr[i] = spin_f
                 energy += dE
 
-        net_spins[t] = np.abs(spin_arr.sum())
+        net_spins[t] =(spin_arr.sum())
         net_energy[t] = energy
 
     return net_energy, net_spins, spin_arr 
 
-E_hist, M_hist, final_spins = metropolis(spins, A, E, J, T, times=10000)
+E_hist, M_hist, final_spins = metropolis(spins, A, E, J, T, times=200000)
+# --- Autocorrelation Time ---
+burn = 10000
+tau_E, ok_E = tau(E_hist[burn:])
+tau_M, ok_M = tau(np.abs(M_hist[burn:]))
 
-# Check 1: running energy should match the Hamiltonian recomputed from scratch
-E_recomputed = -J * np.sum(A * np.outer(final_spins, final_spins)) / 2
-print(E_hist[-1], E_recomputed)          # these two should be equal
+print(f"tau_E = {tau_E: .1f} (Converged: {ok_E})")
+print(f"tau_M = {tau_M: .1f} (Converged: {ok_M})")
 
-# Check 2: where did the system end up?
-print(E_hist[-1] / N, M_hist[-1] / N)
+# Check: where did the system end up?
+print("E Final:",E_hist[-1], "M Final:", M_hist[-1]/N)
+
+# ---- Creating averages for Plots ----
+block = 1000
+n_blocks = len(E_hist) // block
+E_block = np.mean(E_hist[:n_blocks*block].reshape(n_blocks, block), axis=1)
+M_block = np.mean(M_hist[:n_blocks*block].reshape(n_blocks, block), axis=1) / N
+block_centres = np.arange(n_blocks) * block + block / 2
+
+E_mean = np.mean(E_hist)          #Overall average Energy
+M_mean = np.mean(M_hist) / N      #Overall average Magnetization
+
+# ---- Plot E and M against sweeps ----
+sweeps = np.arange(len(E_hist))     # step number -> sweeps
+
+fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+
+ax[0].plot(sweeps, E_hist)
+ax[0].plot(block_centres, E_block, color='red', label='Sweep Average')
+ax[0].axhline(E_mean, color='green', linestyle='--', label='Overall Average')
+ax[0].set_xlabel("Sweeps")
+ax[0].set_ylabel("Energy E")
+
+ax[1].plot(sweeps, M_hist/N)
+ax[1].plot(block_centres, M_block, color='red', label='Sweep Average')
+ax[1].axhline(M_mean, color='green', linestyle='--', label='Overall Average')
+ax[1].set_xlabel("Sweeps")
+ax[1].set_ylabel("Magnetisation |M| Per Spin")
+
+ax[0].legend()
+ax[1].legend()
+
+fig.suptitle(f"3D cube, L = {L}, T = {T}")
+plt.tight_layout()
+plt.show()
