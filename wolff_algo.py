@@ -74,7 +74,7 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
     # print(type(spin_arr))
     net_spins = np.zeros(times - 1)
     net_energy = np.zeros(times - 1)
-    cluster_sizes = np.zeros(times - 1)
+    cluster_size = np.zeros(times - 1)
     energy = get_energy(spin_arr)
 
     # probability that bond forms between 2 parallel neighboring spins
@@ -91,6 +91,7 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
         stack = [(i0, j0)]
         # immediately flip seed
         spin_arr[i0][j0] = -seed_spin
+        size = 1
 
         while len(stack) > 0:
             # pop a coordinate off the stack to check its 4 neighbors
@@ -112,6 +113,8 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
                     if np.random.random() < p_add:
                         spin_arr[ni][nj] = -seed_spin
                         stack.append((ni, nj))
+                        size += 1
+        cluster_size[t] = size
 
         if (t + 1) % 10000 == 0:
             print(f'Wolff sweep {t + 1}')
@@ -121,13 +124,14 @@ def wolff(spin_matrix, energy, times=100000, KbT=Kb*T):
         net_spins[t] = np.abs(spin_arr.sum())
         net_energy[t] = energy
 
-    return net_energy, net_spins
+    return net_energy, net_spins, cluster_size
 
 # --- AUTOCORRELATION ---
 
 
 def tau_int(x, max_lag=None, c=5):
     x = np.asarray(x, dtype=float)
+    x = x - x.mean()
     n = len(x)
     if max_lag is None:
         max_lag = n // 10
@@ -141,54 +145,38 @@ def tau_int(x, max_lag=None, c=5):
         rho[tau] = cov / var
 
     tau = 0.5
-    for W in range(1, len(rho)):
+    for W in range(1, n // 10):
         tau += rho[W]
         if W >= c * tau:
             return tau, True
     return tau, False
 
 
-def mag_sweeps(L_vals, temps, steps=30000, burn_in=4000):
-    T_list = []
+def compare_temps(T, burn_metro=4000, burn_wolff=1000):
+    KbT = Kb * T
+    spin_matrix = np.random.choice([-1.0, 1.0], size=(N, N))
+    E0 = get_energy(spin_matrix)
 
-    for L in L_vals:
-        m_vals = []
-        for T in temps:
-            kbt = Kb * T
-            random_matrix = np.random.random((N, N))
-            spin_matrix = np.zeros((N, N))
-            spin_matrix[random_matrix >= 0.5] = 1
-            spin_matrix[random_matrix < 0.5] = -1
-            E0 = get_energy(spin_matrix)
+    E_m, M_m = metropolis(spin_matrix.copy(), E0, KbT=KbT)
+    E_w, M_w, C_w = wolff(spin_matrix.copy(), E0, KbT=KbT)
+    x_m = np.arange(1, len(E_m + 1)) / N**2
+    x_w = np.cumsum(C_w) / N**2
 
-            # run metro simulation
-            net_energy, net_spins = metropolis(
-                spin_matrix, E0, times=steps, KbT=kbt)
-            # equilibrium magnetization
-            M_metro = net_spins[burn_in:]
-            mean_m = np.mean(M_metro) / (L * L)
-            m_vals.append(mean_m)
+    # calc tau in sweeps
+    tau_Em, _ = tau_int(E_m[burn_metro:])
+    tau_Mm, _ = tau_int(M_m[burn_metro:])
+    tau_Ew, _ = tau_int(E_w[burn_wolff:])
+    tau_Mw, _ = tau_int(M_w[burn_wolff:])
+    mean_clust = C_w[burn_wolff:].mean()
 
-        m_vals = np.array(m_vals)
+    # collect what we learned from the temps into a dictionary
+    results = dict(
+        T=T, x_m=x_m, x_w=x_w, E_m=E_m, M_m=M_m, E_w=E_w, M_w=M_w,
+        tau_Em=(tau_Em / N**2), tau_Mm=(tau_Mm / N**2),
+        tau_Ew=(tau_Ew * mean_clust / N**2), tau_Mw=(tau_Mw * mean_clust / N**2),
+    )
 
-        # use np.gradient to calculate the derivative
-        # finding |dM / dT|
-        dT = temps[1] - temps[0]
-        dM_dT = np.abs(np.gradient(m_vals, dT))
-
-        # use derivative to find the peak
-        peak = np.argmax(dM_dT)
-        T_L = temps[peak]
-        T_list.append(T_L)
-        print(f'L = {L}; T(L) = {T_L:.3f}')
-    return np.array(L_vals), np.array(T_list)
-
-# gemini suggestion
-# Define finite-size scaling fit function
-
-
-def fss_relation(L, T_c, x0, nu):
-    return T_c * (1.0 + x0 * (L ** (-1.0 / nu)))
+    return results
 
 
 def main():
@@ -199,7 +187,7 @@ def main():
 
     E0 = get_energy(spin_matrix)
     E_metro, M_metro = metropolis(spin_matrix.copy(), E0)
-    E_wolff, M_wolff = wolff(spin_matrix.copy(), E0)
+    E_wolff, M_wolff, C_w = wolff(spin_matrix.copy(), E0)
 
     # absolute values
     absM_metro = np.abs(M_metro)
@@ -272,19 +260,6 @@ def main():
     print(f'Done plotting wolff_plots_T{T}.png')
     plt.show()
     plt.close()
-
-    # critical temperature calculation
-    L_vals = [10, 15, 20]
-    temps = [1.0, 4.0, 50]
-
-    L_arr, T_arr = mag_sweeps(L_vals, temps)
-
-    # fit using least squares
-    param_opt, param_cov = curve_fit(
-        fss_relation, L_arr, T_arr, p0=[2.26, 1.0, 1.0])
-    Tc_est, x0_est, nu_est = param_opt
-
-    print(f"\nEstimated T_c (infinite limit): {Tc_est:.4f}")
 
 
 if __name__ == "__main__":
